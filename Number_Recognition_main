@@ -29,3 +29,391 @@ if __name__ == "__main__":      #main funt. to run app
 
     Recog_Num(root)                  # uses window to run the app on
     root.mainloop()                 # starts the app, and keeps it running til close
+"""
+ME 4990 - Project 2
+Minecraft-themed MNIST GUI (Version 2.0)
+
+This file only handles the GUI.  The "model" is faked for now.
+Later, you'll replace `fake_predict` with real MNIST predictions.
+
+Run with:  python this_file.py
+"""
+
+import tkinter as tk
+from tkinter import ttk
+
+
+# -----------------------------------------------------------
+#  COLOR PALETTE  (Minecraft-ish)
+# -----------------------------------------------------------
+# You can tweak these if you want slightly different vibes.
+GRASS_TOP   = "#3c8526"   # bright grass strip
+GRASS_EDGE  = "#2c5f1b"   # darker grass edge
+DIRT_MAIN   = "#5b3b1f"   # dirt background
+STONE_LIGHT = "#808080"   # stone (image area)
+STONE_DARK  = "#404040"   # darker stone / outlines
+TEXT_LIGHT  = "#f3f3f3"   # main text
+ACCENT      = "#62ff6a"   # highlight for buttons and blocks
+
+
+class Recog_Num(ttk.Frame):
+    """
+    Main application frame for Number Recognition GUI.
+
+    This class is a ttk.Frame that contains:
+      - Grass title bar
+      - Left panel: test image canvas
+      - Right panel: model selection, buttons, info label, digit blocks
+    """
+
+    def __init__(self, master):
+        super().__init__(master, padding=10)
+        master.title("Number Recognition")
+
+        # Make the containing frame fill the root window
+        self.grid(sticky="nsew")
+        master.columnconfigure(0, weight=1)
+        master.rowconfigure(0, weight=1)
+
+        # Build all widgets
+        self.build_UI()
+
+        # Draw placeholder "test image" at startup
+        self.show_pic()
+
+    # -------------------------------------------------------
+    #  BUILD THE INTERFACE
+    # -------------------------------------------------------
+    def build_UI(self):
+        """Create all widgets and layout for the GUI."""
+
+        # ----- Grass title bar (like the top of a Minecraft block) -----
+        grass_frame = ttk.Frame(self, style="Grass.TFrame", padding=(10, 6))
+        grass_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+
+        # "Dirt edge" under the grass strip
+        dirt_edge = ttk.Frame(self, style="GrassEdge.TFrame", height=3)
+        dirt_edge.grid(row=1, column=0, columnspan=2, sticky="ew")
+
+        title_label = ttk.Label(
+            grass_frame,
+            text="MNIST Number Recognition",
+            style="Title.TLabel",
+            anchor="w",
+        )
+        title_label.pack(fill="x")
+
+        # ----- Main content: Left (image) and Right (controls) -----
+        self.left_frame = ttk.Frame(self, style="Panel.TFrame", padding=8)
+        self.right_frame = ttk.Frame(self, style="Panel.TFrame", padding=8)
+
+        self.left_frame.grid(row=2, column=0, sticky="nsew", padx=(0, 6), pady=(8, 0))
+        self.right_frame.grid(row=2, column=1, sticky="nsew", padx=(6, 0), pady=(8, 0))
+
+        # Make the grid cells expandable
+        self.columnconfigure(0, weight=3)
+        self.columnconfigure(1, weight=2)
+        self.rowconfigure(2, weight=1)
+
+        # ----- LEFT: Canvas for test image -----
+        self.canvas = tk.Canvas(
+            self.left_frame,
+            width=220,
+            height=220,
+            bg=STONE_LIGHT,
+            highlightthickness=3,
+            highlightbackground=STONE_DARK,
+        )
+        self.canvas.pack(expand=True, fill="both")
+
+        ttk.Label(
+            self.left_frame,
+            text="Test Image",
+            style="Subtle.TLabel",
+            anchor="center",
+        ).pack(pady=(6, 0))
+
+        # ----- RIGHT: Controls -----
+
+        # Model selection
+        ttk.Label(
+            self.right_frame,
+            text="Model Selection",
+            style="Header.TLabel",
+        ).pack(anchor="w", pady=(0, 4))
+
+        self.model_var = tk.StringVar(value="Model 1")
+        for name in ["Model 1", "Model 2", "Model 3"]:
+            ttk.Radiobutton(
+                self.right_frame,
+                text=name,
+                variable=self.model_var,
+                value=name,
+            ).pack(anchor="w")
+
+        ttk.Separator(self.right_frame).pack(fill="x", pady=8)
+
+        # Buttons (Load Image / Predict)
+        self.load_btn = ttk.Button(
+            self.right_frame,
+            text="Load Image",
+            command=self.fake_load,
+            style="Accent.TButton",
+        )
+        self.load_btn.pack(fill="x", pady=2)
+
+        self.predict_btn = ttk.Button(
+            self.right_frame,
+            text="Predict",
+            command=self.fake_predict,
+            style="Accent.TButton",
+        )
+        self.predict_btn.pack(fill="x", pady=2)
+
+        ttk.Separator(self.right_frame).pack(fill="x", pady=8)
+
+        # Info label (like a tooltip / status box)
+        self.info_label = ttk.Label(
+            self.right_frame,
+            text="Model: N/A\nTraining acc: N/A\nPrediction: N/A",
+            style="Info.TLabel",
+            justify="left",
+        )
+        self.info_label.pack(anchor="w", fill="x")
+
+        # Small gap before the digit blocks
+        ttk.Label(self.right_frame, text="", style="Panel.TLabel").pack(pady=(4, 0))
+
+        # ----- Digit blocks (inventory bar style) -----
+        ttk.Label(
+            self.right_frame,
+            text="Digit Blocks",
+            style="Header.TLabel",
+        ).pack(anchor="w", pady=(6, 2))
+
+        self.blocks_canvas = tk.Canvas(
+            self.right_frame,
+            width=260,
+            height=48,
+            bg=DIRT_MAIN,
+            highlightthickness=2,
+            highlightbackground=STONE_DARK,
+        )
+        self.blocks_canvas.pack(fill="x")
+
+        self._create_number_blocks()
+
+    # -------------------------------------------------------
+    #  NUMBER BLOCKS (0–9 inventory bar)
+    # -------------------------------------------------------
+    def _create_number_blocks(self):
+        """
+        Draw Minecraft-style square blocks labeled 0–9.
+
+        These are just rectangles on a canvas; we keep track of their IDs
+        so we can recolor/highlight the chosen digit later.
+        """
+        self.block_ids = []
+        self.text_ids = []
+
+        block_size = 28   # width/height of each block
+        gap = 3           # spacing between blocks
+        offset_x = 6      # left margin
+        y0, y1 = 8, 8 + block_size
+
+        for d in range(10):
+            x0 = offset_x + d * (block_size + gap)
+            x1 = x0 + block_size
+
+            # Draw "wood/stone" square for the digit
+            rect = self.blocks_canvas.create_rectangle(
+                x0, y0, x1, y1,
+                fill="#6c5130",     # wood-ish dirt color
+                outline=STONE_DARK,
+                width=2,
+            )
+
+            # Digit label centered inside the block
+            txt = self.blocks_canvas.create_text(
+                (x0 + x1) // 2,
+                (y0 + y1) // 2,
+                text=str(d),
+                fill=TEXT_LIGHT,
+                font=("Consolas", 10, "bold"),
+            )
+
+            self.block_ids.append(rect)
+            self.text_ids.append(txt)
+
+    def _highlight_block(self, digit: int):
+        """
+        Highlight the predicted digit's block in bright green,
+        and reset all others back to their default look.
+        """
+        # Reset all blocks to default colors
+        for bid in self.block_ids:
+            self.blocks_canvas.itemconfig(
+                bid,
+                outline=STONE_DARK,
+                fill="#6c5130",
+            )
+
+        # Highlight the requested digit
+        if 0 <= digit <= 9:
+            self.blocks_canvas.itemconfig(
+                self.block_ids[digit],
+                outline=ACCENT,
+                fill="#47b94f",   # greener fill when selected
+            )
+
+    # -------------------------------------------------------
+    #  IMAGE AREA (placeholder for now)
+    # -------------------------------------------------------
+    def show_pic(self):
+        """Convenience wrapper used at startup."""
+        self.fake_load()
+
+    def fake_load(self):
+        """
+        Temporary "Load Image" handler.
+
+        For now, just draws a slightly inset stone square.
+        Later, you'll:
+          - open a file dialog
+          - load & preprocess a real MNIST image
+          - display that image on the canvas
+        """
+        self.canvas.delete("all")
+        self.canvas.create_rectangle(
+            30, 30, 190, 190,
+            fill="#9a9a9a",
+            outline=STONE_DARK,
+            width=3,
+        )
+
+    # -------------------------------------------------------
+    #  PREDICTION (fake for now)
+    # -------------------------------------------------------
+    def fake_predict(self):
+        """
+        Temporary "Predict" handler.
+
+        Right now, it just:
+          - reads which model is selected
+          - pretends the prediction is digit 7
+          - updates the info label
+          - highlights the "7" block
+
+        Later, you'll replace this with:
+          - call your actual PyTorch model(s)
+          - compute softmax probabilities
+          - argmax -> predicted digit
+          - optional: color blocks based on probability
+        """
+        model = self.model_var.get()
+        pred_digit = 7  # FAKE result for demo
+
+        self.info_label.config(
+            text=f"Model: {model}\nTraining acc: ---%\nPrediction: {pred_digit}"
+        )
+        self._highlight_block(pred_digit)
+
+
+# ===========================================================
+#  MAIN (styling + app launch)
+# ===========================================================
+if __name__ == "__main__":
+    root = tk.Tk()
+    root.minsize(680, 320)
+
+    style = ttk.Style()
+    try:
+        style.theme_use("clam")   # good base theme on most platforms
+    except Exception:
+        pass
+
+    # ----- ROOT BACKGROUND -----
+    root.configure(bg=DIRT_MAIN)
+
+    # ----- BASE FRAME STYLES -----
+    style.configure("TFrame", background=DIRT_MAIN)
+    style.configure("Panel.TFrame", background=DIRT_MAIN)
+
+    # Grass strip at top
+    style.configure("Grass.TFrame", background=GRASS_TOP)
+    style.configure("GrassEdge.TFrame", background=GRASS_EDGE)
+
+    # ----- LABEL STYLES -----
+    # Title on grass bar
+    style.configure(
+        "Title.TLabel",
+        background=GRASS_TOP,
+        foreground=TEXT_LIGHT,
+        font=("Consolas", 16, "bold"),
+    )
+    # Regular labels inside panels
+    style.configure(
+        "TLabel",
+        background=DIRT_MAIN,
+        foreground=TEXT_LIGHT,
+        font=("Consolas", 11),
+    )
+    style.configure(
+        "Panel.TLabel",
+        background=DIRT_MAIN,
+        foreground=TEXT_LIGHT,
+        font=("Consolas", 11),
+    )
+    # Section headers ("Model Selection", "Digit Blocks")
+    style.configure(
+        "Header.TLabel",
+        background=DIRT_MAIN,
+        foreground=TEXT_LIGHT,
+        font=("Consolas", 12, "bold"),
+    )
+    # Subtle labels like "Test Image"
+    style.configure(
+        "Subtle.TLabel",
+        background=DIRT_MAIN,
+        foreground="#d0d0d0",
+        font=("Consolas", 10),
+    )
+    # Info box (prediction text)
+    style.configure(
+        "Info.TLabel",
+        background="#1f1f1f",   # darker tooltip-like bg
+        foreground=TEXT_LIGHT,
+        font=("Consolas", 11),
+        padding=6,
+    )
+
+    # ----- BUTTON STYLE -----
+    style.configure(
+        "Accent.TButton",
+        background=ACCENT,
+        foreground="black",
+        font=("Consolas", 11, "bold"),
+        padding=4,
+        borderwidth=1,
+        focusthickness=3,
+        focuscolor=ACCENT,
+    )
+    style.map(
+        "Accent.TButton",
+        background=[("active", "#8bff90")],
+    )
+
+    # ----- RADIOBUTTON STYLE -----
+    style.configure(
+        "TRadiobutton",
+        background=DIRT_MAIN,
+        foreground=TEXT_LIGHT,
+        font=("Consolas", 11),
+    )
+
+    # Make root expandable
+    root.columnconfigure(0, weight=1)
+    root.rowconfigure(0, weight=1)
+
+    app = Recog_Num(root)
+    root.mainloop()
