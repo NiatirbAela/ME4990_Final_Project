@@ -39,7 +39,24 @@
 
 #--------------------------TIPS------------------------------------------------------------------------------------
 
-#
-#
-#
-#
+# Network
+#      Start with simple ones
+#      Modify from existing ones
+# Load data
+#      Takes some time
+# During debug stage, don’t load all data
+# Make sure your code grammatically works before loading all data
+# Image shall be loaded as grayscale
+# Pixel intensity is best in the scale of 0.0- 1.0, not 0-255.
+# Use ChatGPT to help your loading and encoding
+# Train-test Split: 80% train, 20% test (??)
+# Training
+#    There is no tip here, it takes some time 
+#    Print out loss for every 10 or 100 epoch so you monitored your code
+#    Plan plenty of time to tune your hyper-parameter
+#Evaluation
+#    Report accuracy and confusion matrix
+#    Through confusion matrix, you may see maybe there is a trend. (E.g. many 6 is miss classified to 0). Then, you can do   #                                                                                            something (what you can do?)
+#    Export your prediction and the ground truth to .csv (see our course example) for better understanding your result 
+# For demonstration, you don’t have time to train data on-site
+# You need to load your pre-trained model!
