@@ -1,0 +1,12 @@
+from tkinter import ttk, message box
+class Recog_Num(ttk.frame):
+# initializing app
+  def__init__(self, master):
+    super().__init__(master, padding = 10):
+    master.title("Number Recognition") 
+    self.grid(sticky="nsew")
+    master.columnfigure(0, weight=1)
+    master.rowconfigure(o, weight=1)
+# Setting up functions to be defined later
+    self.build_UI() # input boxes, buttons/dropdowns location, result areas 
+    self.show_pic() # display image
