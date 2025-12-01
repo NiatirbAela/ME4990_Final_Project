@@ -137,11 +137,48 @@ class Model2(nn.Module):
         self.fc3=nn.Linear(128,10)
         self.nonlin=nn.ReLU()
 
-def forward(self, x):
-    x = self.fc1(x)
-    x = self.nonlin(x)
-    x = self.fc2(x)
-    x = self.nonlin(x)
-    x = self.fc3(x)
-    x = self.nonlin(x)
-    return x 
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.nonlin(x)
+        x = self.fc2(x)
+        x = self.nonlin(x)
+        x = self.fc3(x)
+        x = self.nonlin(x)
+        return x 
+
+'''Model3: Using 2 Convolution + 2 fully connected layers
+input: 1x28x28
+conv1: 1x28x28->16x28x28
+maxpool(2x2): 16x28x28->16x14x14
+conv2: 16x14x14->32x14x14
+maxpool(2x2): 32x7x7
+flatten: 32x7x7= 1568
+fc1: 1568-> 128
+non linear: ReLU
+fc2: 128 -> 10 
+nonlinear: ReLU'''
+
+class Model3(nn.Module):
+    def __init__(self):
+        self.conv1=nn.Conv2d(1, 16, 5, 1, 2)
+        self.conv2=nn.Conv2d(16, 32, 5, 1, 2)
+
+        self.reduce=nn.MaxPool2d(2,2)
+
+        self.fc1=nn.Linear(1568, 128)
+        self.fc2=nn.Linear(128,10)
+
+        self.nonlin=nn.ReLU()
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.reduce(x)
+        x = self.conv2(x)
+        x = self.reduce(x)
+        x = self.fc1(x)
+        x = self.nonlin(x)
+        x = self.fc2(x)
+        x = self.nonlin(x)
+        return x
+
+
