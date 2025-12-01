@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import os
 import time
 from typing import Tuple
@@ -110,11 +109,11 @@ FC3: 128 -> 10 (AKA 0-9)
 Nonlinear: ReLU
 '''
 class FC(nn.Module):
-    super().__init__()
-    self.fc1=nn.Linear(784,256)
-    self.fc2=nn.Linear(256,128)
-    self.fc3=nn.Linear(128,10)
-    self.nonlin=nn.ReLU()
+    def __init__(self):
+        self.fc1=nn.Linear(784,256)
+        self.fc2=nn.Linear(256,128)
+        self.fc3=nn.Linear(128,10)
+        self.nonlin=nn.ReLU()
 
 def forward(self, x):
     x = self.fc1(x)
