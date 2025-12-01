@@ -15,6 +15,7 @@ from torchvision import datasets, transforms
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+# MNST JPGs from GitHub link in project lecture
 TRAIN_DIR = r"C:\Users\aleah\Python Learning\CS_Final_Project\MNIST Dataset JPG format\MNIST Dataset JPG format\MNIST - JPG - training"   # <-- change to your training folder
 TEST_DIR  = r"C:\Users\aleah\Python Learning\CS_Final_Project\MNIST Dataset JPG format\MNIST Dataset JPG format\MNIST - JPG - testing"    # <-- change to your testing folder
 
@@ -24,7 +25,7 @@ LEARNING_RATE = 1e-3
 
 
 # ===========================
-#  DATA AUGMENTATION, to input into training models later
+#  DATA AUGMENTATION
 # ===========================
 
 class AddGaussianNoise(object):
@@ -94,3 +95,6 @@ def get_dataloaders() -> Tuple[DataLoader, DataLoader]:
 
     return train_loader, test_loader
 
+# =================================
+# Build class for each model
+# =================================
