@@ -99,7 +99,29 @@ def get_dataloaders() -> Tuple[DataLoader, DataLoader]:
 # Build class for each model
 # =================================
 
-'''Fully Connected Layers:
+'''Model 1: 2 Fully connected layers:
+*2 FC layers minimum
+input: 1x28x28 (flatten)
+FC1: 784 -> 128
+nonlinear: ReLU
+FC2: 128 -> 10 (AKA 0-9)
+nonlinear: ReLU '''
+class Model1(nn.Module):
+    def __init__(self):
+        self.fc1=nn.Linear(784,128)
+        self.fc2=nn.Linear(128,10)
+        self.nonlin=nn.ReLU()
+
+    def forward(self, x):
+        x=self.fc1(x)
+        x=self.nonlin(x)
+        x=self.fc2(x)
+        x=self.nonlin(x)
+        return x
+    
+
+'''Model2: 3 Fully Connected Layers:
+*just adding an extra layer to simply increase accuracy
 Input: 1x28x28=784 (flatten)
 FC1: 784 -> 256
 Nonlinear: ReLU
@@ -108,7 +130,7 @@ Nonlinear: ReLU
 FC3: 128 -> 10 (AKA 0-9)
 Nonlinear: ReLU
 '''
-class FC(nn.Module):
+class Model2(nn.Module):
     def __init__(self):
         self.fc1=nn.Linear(784,256)
         self.fc2=nn.Linear(256,128)
