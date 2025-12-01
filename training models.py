@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import os
 import time
 from typing import Tuple
@@ -123,6 +124,3 @@ def forward(self, x):
     x = self.fc3(x)
     x = self.nonlin(x)
     return x 
-
-
-
