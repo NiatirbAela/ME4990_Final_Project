@@ -19,9 +19,13 @@ This version focuses on clarity + clean comments for understanding.
 # ---------------------------
 # Standard Library Imports
 # ---------------------------
+import torch
+import torch.nn.functional as F
+from torchvision import transforms
+
 import tkinter as tk
 from tkinter import ttk, filedialog     # Tkinter file dialog window
-
+from tkinter import messagebox
 # ---------------------------
 # External Dependencies
 # ---------------------------
@@ -30,6 +34,15 @@ from tkinter import ttk, filedialog     # Tkinter file dialog window
 from PIL import Image, ImageTk
 import numpy as np
 
+# Matplotlib → used to create data infographs
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+try:
+    from training_models import Model1, Model2, Model3
+except ImportError:
+    # optional: ignore if you only need confusion matrices in the GUI for now
+    Model1 = Model2 = Model3 = None
 
 # ============================================================
 #  COLORS — The Minecraft Theme Palette
@@ -61,12 +74,56 @@ ACCENT      = "#62ff6a"
 #  FONTS — Safe, built-in fonts
 # ============================================================
 
+
 # Consolas exists on Windows by default (safe choice).
 # Using size variants for headers and body text.
 FONT_BASE   = ("Consolas", 11)
 FONT_HDR    = ("Consolas", 12, "bold")
 FONT_BIG    = ("Consolas", 16, "bold")
 FONT_SMALL  = ("Consolas", 10, "bold")
+
+
+# ============================================================
+#  GLOBAL DICTIONARIES/CONFIG — Paths, figures, etc.
+# ============================================================
+
+DEVICE = torch.device("cpu")  # GUI runs on CPU
+
+# paths to your trained model weights
+MODEL_PATHS = {
+    "model1": "saved_models/model1_fc2_best.pth",
+    "model2": "saved_models/model2_fc3_best.pth",
+    "model3": "saved_models/model3_cnn_best.pth",
+}
+
+# paths to your saved confusion matrices
+CM_PATHS = {
+    "model1": "saved_models/model1_fc2_cm.pt",
+    "model2": "saved_models/model2_fc3_cm.pt",
+    "model3": "saved_models/model3_cnn_cm.pt",
+}
+
+# test accuracies from your final training run (update when you get better ones)
+MODEL_ACCURACIES = {
+    "model1": 0.87,  # 87% for Model 1
+    "model2": 0.59,  # 59% for Model 2
+    "model3": 0.89,  # 89% for Model 3
+}
+
+# nice model names for the popup title
+MODEL_NAMES_PRETTY = {
+    "model1": "Model 1 — 2-layer FC",
+    "model2": "Model 2 — 3-layer FC",
+    "model3": "Model 3 — CNN",
+}
+
+# same preprocessing as test_transform in training
+gui_transform = transforms.Compose([
+    transforms.Grayscale(num_output_channels=1),
+    transforms.Resize((28, 28)),
+    transforms.ToTensor(),
+    transforms.Normalize((0.5,), (0.5,))
+])
 
 
 # ======================================================================
@@ -205,7 +262,6 @@ class Recog_Num(ttk.Frame):
             style="Accent.TButton",
         )
         self.load_btn.pack(fill="x", pady=2)
-
         # Predict button — still using fake logic until ML models added
         self.predict_btn = ttk.Button(
             self.right_frame,
@@ -215,7 +271,17 @@ class Recog_Num(ttk.Frame):
         )
         self.predict_btn.pack(fill="x", pady=2)
 
+        # Nerd Facts button — opens confusion matrix + per-class accuracy plots
+        self.nerd_btn = ttk.Button(
+            self.right_frame,
+            text="Nerd Facts!",
+            command=self.on_nerd_facts,
+            style="Accent.TButton",
+        )
+        self.nerd_btn.pack(fill="x", pady=2)
+
         ttk.Separator(self.right_frame).pack(fill="x", pady=8)
+
 
         # Info label showing model name + accuracy + prediction
         self.info_label = ttk.Label(
@@ -250,12 +316,88 @@ class Recog_Num(ttk.Frame):
         )
         self.blocks_canvas.pack(fill="x")
 
+        self._get_model_key()
         self._create_number_blocks()
 
 
     # ======================================================================
     #  DIGIT BLOCKS (create + highlight)
     # ======================================================================
+    def _get_model_key(self):
+        """
+        Map the GUI radio button text ("Model 1", etc.) to the
+        internal keys used in CM_PATHS and MODEL_ACCURACIES.
+        """
+        gui_name = self.model_var.get()  # "Model 1", "Model 2", or "Model 3"
+        mapping = {
+            "Model 1": "model1",
+            "Model 2": "model2",
+            "Model 3": "model3",
+        }
+        return mapping.get(gui_name)
+
+    def _get_model_key(self):
+        """
+        Map the GUI radio button text ("Model 1", etc.) to the
+        internal keys used in MODEL_PATHS / MODEL_ACCURACIES / CM_PATHS.
+        """
+        gui_name = self.model_var.get()  # "Model 1", "Model 2", or "Model 3"
+        mapping = {
+            "Model 1": "model1",
+            "Model 2": "model2",
+            "Model 3": "model3",
+        }
+        return mapping.get(gui_name)
+
+    def _get_active_model(self):
+        """
+        Return the PyTorch model object for the currently selected model.
+        Caches the loaded models in self._loaded_models so we don't
+        reload from disk every time.
+        """
+        key = self._get_model_key()
+        if key is None:
+            messagebox.showerror("Error", "No model selected.")
+            return None
+
+        # Create cache dict if it doesn't exist yet
+        if not hasattr(self, "_loaded_models"):
+            self._loaded_models = {}
+
+        # If we've already loaded this model once, reuse it
+        if key in self._loaded_models:
+            return self._loaded_models[key]
+
+        # Build the right architecture
+        if key == "model1":
+            model = Model1()
+        elif key == "model2":
+            model = Model2()
+        elif key == "model3":
+            model = Model3()
+        else:
+            messagebox.showerror("Error", f"Unknown model key: {key}")
+            return None
+
+        # Load weights from disk
+        path = MODEL_PATHS.get(key)
+        if path is None:
+            messagebox.showerror("Error", f"No model path found for {key}")
+            return None
+
+        try:
+            state_dict = torch.load(path, map_location=DEVICE)
+        except FileNotFoundError:
+            messagebox.showerror("Error", f"Model file not found:\n{path}")
+            return None
+
+        model.load_state_dict(state_dict)
+        model.to(DEVICE)
+        model.eval()
+
+        self._loaded_models[key] = model
+        return model
+
 
     def _create_number_blocks(self):
         """
@@ -422,39 +564,147 @@ class Recog_Num(ttk.Frame):
             width=3,
         )
 
+    def on_nerd_facts(self):
+        """
+        Opens a popup window showing:
+        - Test accuracy
+        - Confusion matrix heatmap
+        - Per-class accuracy histogram
+        for the currently selected model.
+        """
+        # Map "Model 1"/"Model 2"/"Model 3" -> "model1"/"model2"/"model3"
+        key = self._get_model_key()
+        if key is None:
+            messagebox.showerror("Error", "No model selected.")
+            return
+
+        acc = MODEL_ACCURACIES.get(key)
+        cm_path = CM_PATHS.get(key)
+        pretty_name = MODEL_NAMES_PRETTY.get(key, key)
+
+        if acc is None or cm_path is None:
+            messagebox.showerror("Error", f"No stats available for model key: {key}")
+            return
+
+        # Load confusion matrix from saved_models/modelX_cm.pt
+        try:
+            cm = torch.load(cm_path, map_location="cpu")
+        except FileNotFoundError:
+            messagebox.showerror("Error", f"Confusion matrix file not found:\n{cm_path}")
+            return
+
+        cm_np = cm.numpy()
+        num_classes = cm_np.shape[0]
+
+        # Per-class accuracy: diagonal / row sum
+        per_class_correct = cm_np.diagonal()
+        per_class_total = cm_np.sum(axis=1).clip(min=1)  # avoid divide by zero
+        per_class_acc = per_class_correct / per_class_total
+
+        # Create popup window
+        win = tk.Toplevel(self)
+        win.title(f"Nerd Facts — {pretty_name}")
+
+        # Accuracy label
+        acc_label = ttk.Label(
+            win,
+            text=f"Test Accuracy: {acc*100:.2f}%",
+            font=FONT_BIG,
+        )
+        acc_label.pack(pady=5)
+
+        # Matplotlib figure with 2 subplots
+        fig = Figure(figsize=(7, 3), dpi=100)
+
+        # Confusion matrix heatmap
+        ax1 = fig.add_subplot(1, 2, 1)
+        im = ax1.imshow(cm_np, interpolation="nearest")
+        ax1.set_title("Confusion Matrix")
+        ax1.set_xlabel("Predicted")
+        ax1.set_ylabel("True")
+        ax1.set_xticks(range(num_classes))
+        ax1.set_yticks(range(num_classes))
+
+        fig.colorbar(im, ax=ax1, fraction=0.046, pad=0.04)
+
+        # Per-class accuracy histogram
+        ax2 = fig.add_subplot(1, 2, 2)
+        ax2.bar(range(num_classes), per_class_acc)
+        ax2.set_title("Per-Class Accuracy")
+        ax2.set_xlabel("Digit")
+        ax2.set_ylabel("Accuracy")
+        ax2.set_xticks(range(num_classes))
+
+        fig.tight_layout()
+
+        canvas = FigureCanvasTkAgg(fig, master=win)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
 
     # ======================================================================
     #  TEMPORARY PREDICT FUNCTION (FAKE OUTPUT)
     # ======================================================================
+    
     def fake_predict(self):
         """
-        This is not the real ML prediction yet.
+        REAL prediction now (name kept the same so the button wiring still works).
 
-        Right now it:
-        - Reads selected model name,
-        - Pretends the predicted digit is always 7,
-        - Updates the info label,
-        - Highlights the "7" block.
-
-        Later you will replace this with:
-            1. Convert self.current_image_array to a tensor
-            2. Feed into your ML model
-            3. Use argmax to find predicted digit
-            4. Call _highlight_block(pred_digit)
+        Steps:
+        1. Check that an image is loaded (self.current_image_array).
+        2. Get the selected model (Model1/2/3) via _get_active_model().
+        3. Convert the 28x28 NumPy array to a normalized torch tensor.
+        4. Run the model to get logits.
+        5. Use argmax to choose the predicted digit 0–9.
+        6. Update the info label and highlight the digit block.
         """
+        if self.current_image_array is None:
+            messagebox.showwarning(
+                "No image",
+                "Please load an image before predicting."
+            )
+            return
 
-        model = self.model_var.get()
-        pred_digit = 7  # fake
+        # Get the active model based on the radio button
+        model = self._get_active_model()
+        if model is None:
+            return  # error already shown
+
+        # self.current_image_array is 28x28 float32 normalized 0..1
+        # Convert to tensor of shape [1, 1, 28, 28]
+        img_np = self.current_image_array  # shape (28, 28), values in [0,1]
+        img_tensor = torch.from_numpy(img_np).unsqueeze(0).unsqueeze(0).to(DEVICE)
+
+        # Apply the same normalization as in training: Normalize((0.5,), (0.5,))
+        # (x - 0.5) / 0.5  -> from [0,1] to [-1,1]
+        img_tensor = (img_tensor - 0.5) / 0.5
+
+        # Forward pass through the model
+        with torch.no_grad():
+            logits = model(img_tensor)          # [1, 10]
+            probs = F.softmax(logits, dim=1)    # [1, 10]
+            pred_digit = int(torch.argmax(probs, dim=1).item())
+            pred_prob = float(probs[0, pred_digit].item())
+
+        # Get GUI name ("Model 1", etc.) and accuracy
+        gui_model_name = self.model_var.get()
+        model_key = self._get_model_key()
+        acc = MODEL_ACCURACIES.get(model_key)
+        if acc is not None:
+            acc_str = f"{acc*100:.2f}%"
+        else:
+            acc_str = "N/A"
 
         # Update info area
         self.info_label.config(
-            text=f"Model: {model}\nTraining acc: ---%\nPrediction: {pred_digit}"
+            text=(
+                f"Model: {gui_model_name}\n"
+                f"Test acc: {acc_str}\n"
+                f"Prediction: {pred_digit}  (p={pred_prob:.2f})"
+            )
         )
 
-        # Highlight the digit block
+        # Highlight the predicted digit block
         self._highlight_block(pred_digit)
-
-
 
 # ======================================================================
 #  MAIN SETUP — Tkinter Style Configuration and Window Launch

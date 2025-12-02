@@ -242,6 +242,27 @@ def evaluate(model, loader, criterion):
     accuracy = correct / total
     return avg_loss, accuracy
 
+def compute_confusion_matrix(model, loader, num_classes: int = 10):
+    """
+    Returns a [num_classes x num_classes] confusion matrix tensor.
+    Rows = true labels, columns = predicted labels.
+    """
+    model.eval()
+    cm = torch.zeros(num_classes, num_classes, dtype=torch.int64, device=DEVICE)
+
+    with torch.no_grad():
+        for images, labels in loader:
+            images = images.to(DEVICE)
+            labels = labels.to(DEVICE)
+
+            logits = model(images)
+            preds = torch.argmax(logits, dim=1)
+
+            for t, p in zip(labels.view(-1), preds.view(-1)):
+                cm[t.long(), p.long()] += 1
+
+    return cm.cpu()  # move to CPU for saving / loading later
+
 
 def train_model(model_cls, model_name: str, train_loader, test_loader):
     print(f"\n=== Training {model_name} ===")
@@ -251,7 +272,8 @@ def train_model(model_cls, model_name: str, train_loader, test_loader):
 
     best_acc = 0.0
     os.makedirs("saved_models", exist_ok=True)
-
+    best_model_path = os.path.join("saved_models", f"{model_name}_best.pth")
+    cm_path = os.path.join("saved_models", f"{model_name}_cm.pt")
     for epoch in range(1, NUM_EPOCHS + 1):
         start = time.time()
         train_one_epoch(model, train_loader, optimizer, criterion, epoch)
@@ -264,9 +286,21 @@ def train_model(model_cls, model_name: str, train_loader, test_loader):
             best_acc = test_acc
             save_path = os.path.join("saved_models", f"{model_name}_best.pth")
             torch.save(model.state_dict(), save_path)
-            print(f"  ✅ Saved best {model_name} to {save_path}")
+            print(f"  ✅ Saved best {model_name} to {best_model_path}")
 
     print(f"Best test accuracy for {model_name}: {best_acc:.4%}")
+
+    print(f"Computing confusion matrix for {model_name} ...")
+
+    best_model = model_cls().to(DEVICE)
+    # change this file to wherever you want the info saved -vvvvvvv
+    best_model.load_state_dict(torch.load(best_model_path, map_location=DEVICE)) 
+
+    cm = compute_confusion_matrix(best_model, test_loader, num_classes=10)
+    torch.save(cm, cm_path)
+
+    print(f"Saved confusion matrix to {cm_path}")
+    print(f"Confusion matrix for {model_name}:\n{cm}")
 
 # =================================
 # Main
@@ -289,3 +323,4 @@ if __name__ == "__main__":
     train_model(Model1, "model1_fc2", train_loader, test_loader)
     train_model(Model2, "model2_fc3", train_loader, test_loader)
     train_model(Model3, "model3_cnn", train_loader, test_loader)
+
