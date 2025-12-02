@@ -108,11 +108,13 @@ FC2: 128 -> 10 (AKA 0-9)
 nonlinear: ReLU '''
 class Model1(nn.Module):
     def __init__(self):
+        super().__init__()
         self.fc1=nn.Linear(784,128)
         self.fc2=nn.Linear(128,10)
         self.nonlin=nn.ReLU()
 
     def forward(self, x):
+        x=x.view(x.size(0), -1) #flattening function
         x=self.fc1(x)
         x=self.nonlin(x)
         x=self.fc2(x)
@@ -132,12 +134,14 @@ Nonlinear: ReLU
 '''
 class Model2(nn.Module):
     def __init__(self):
+        super().__init__()
         self.fc1=nn.Linear(784,256)
         self.fc2=nn.Linear(256,128)
         self.fc3=nn.Linear(128,10)
         self.nonlin=nn.ReLU()
 
     def forward(self, x):
+        x = x.view(x.size(0), -1) #flattening function
         x = self.fc1(x)
         x = self.nonlin(x)
         x = self.fc2(x)
@@ -160,6 +164,7 @@ nonlinear: ReLU'''
 
 class Model3(nn.Module):
     def __init__(self):
+        super().__init__()
         self.conv1=nn.Conv2d(1, 16, 5, 1, 2)
         self.conv2=nn.Conv2d(16, 32, 5, 1, 2)
 
@@ -172,13 +177,115 @@ class Model3(nn.Module):
 
     def forward(self, x):
         x = self.conv1(x)
+        x = self.nonlin(x)
         x = self.reduce(x)
         x = self.conv2(x)
+        x = self.nonlin(x)
         x = self.reduce(x)
+        x = x.view(x.size(0), -1) #flattening function
         x = self.fc1(x)
         x = self.nonlin(x)
         x = self.fc2(x)
         x = self.nonlin(x)
         return x
 
+# =================================
+# Training / Evaluation helpers
+# =================================
 
+def train_one_epoch(model, loader, optimizer, criterion, epoch: int):
+    model.train()
+    running_loss = 0.0
+    num_batches = 0
+
+    for images, labels in loader:
+        images = images.to(DEVICE)
+        labels = labels.to(DEVICE)
+
+        optimizer.zero_grad()
+        logits = model(images)
+        loss = criterion(logits, labels)
+        loss.backward()
+        optimizer.step()
+
+        running_loss += loss.item()
+        num_batches += 1
+
+    avg_loss = running_loss / max(1, num_batches)
+    print(f"  Epoch {epoch}: train loss = {avg_loss:.4f}")
+    return avg_loss
+
+
+def evaluate(model, loader, criterion):
+    model.eval()
+    total = 0
+    correct = 0
+    running_loss = 0.0
+    num_batches = 0
+
+    with torch.no_grad():
+        for images, labels in loader:
+            images = images.to(DEVICE)
+            labels = labels.to(DEVICE)
+
+            logits = model(images)
+            loss = criterion(logits, labels)
+
+            running_loss += loss.item()
+            num_batches += 1
+
+            preds = torch.argmax(logits, dim=1)
+            total += labels.size(0)
+            correct += (preds == labels).sum().item()
+
+    avg_loss = running_loss / max(1, num_batches)
+    accuracy = correct / total
+    return avg_loss, accuracy
+
+
+def train_model(model_cls, model_name: str, train_loader, test_loader):
+    print(f"\n=== Training {model_name} ===")
+    model = model_cls().to(DEVICE)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+
+    best_acc = 0.0
+    os.makedirs("saved_models", exist_ok=True)
+
+    for epoch in range(1, NUM_EPOCHS + 1):
+        start = time.time()
+        train_one_epoch(model, train_loader, optimizer, criterion, epoch)
+        test_loss, test_acc = evaluate(model, test_loader, criterion)
+        dt = time.time() - start
+
+        print(f"  Test loss: {test_loss:.4f}, Test acc: {test_acc:.4%}, time: {dt:.1f}s")
+
+        if test_acc > best_acc:
+            best_acc = test_acc
+            save_path = os.path.join("saved_models", f"{model_name}_best.pth")
+            torch.save(model.state_dict(), save_path)
+            print(f"  ✅ Saved best {model_name} to {save_path}")
+
+    print(f"Best test accuracy for {model_name}: {best_acc:.4%}")
+
+# =================================
+# Main
+# =================================
+
+if __name__ == "__main__":
+    print(f"Using device: {DEVICE}")
+    train_loader, test_loader = get_dataloaders()
+    print(f"Train batches: {len(train_loader)}, Test batches: {len(test_loader)}")
+
+    # Sanity check: run a single batch through Model3
+    images, labels = next(iter(train_loader))
+    images = images.to(DEVICE)
+    test_model = Model3().to(DEVICE)
+    with torch.no_grad():
+        out = test_model(images)
+    print("Sanity check - Model3 output shape:", out.shape)  # should be [B, 10]
+
+    # Train each model
+    train_model(Model1, "model1_fc2", train_loader, test_loader)
+    train_model(Model2, "model2_fc3", train_loader, test_loader)
+    train_model(Model3, "model3_cnn", train_loader, test_loader)
